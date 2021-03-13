@@ -33,11 +33,7 @@ limitations under the License.
 ```
 
 ```{code-cell} ipython3
-import pdb, sys, traceback
-def info(type, value, tb):
-    traceback.print_exception(type, value, tb)
-    pdb.pm()
-sys.excepthook = info
+
 ```
 
 # Autodidax: JAX core from scratch
@@ -287,6 +283,9 @@ class ShapedArray:
   def __eq__(self, other):
     return (type(self) is type(other) and
             self.shape == other.shape and self.dtype == other.dtype)
+
+  def __repr__(self):
+    return f"ShapedArray(shape={self.shape}, dtype={self.dtype})"
 ```
 
 ```{code-cell} ipython3
@@ -916,11 +915,8 @@ def reduce_sum_batching_rule(axis_size, vals_in, dims_in, *, axis):
   out_bdim = x_bdim - (new_axis < x_bdim)
   return [reduce_sum(x, new_axis)], [out_bdim]
 vmap_rules[reduce_sum_p] = reduce_sum_batching_rule
+# -
 ```
-
--
-
-+++
 
 Finally, we add a transformation API to kick off the trace:
 
@@ -1146,6 +1142,7 @@ def eval_jaxpr(jaxpr: Jaxpr, args: List[Any]) -> List[Any]:
     return env[x] if type(x) is Var else x.val
 
   def write(v: Var, val: Any) -> None:
+    assert v not in env  # single-assignment
     env[v] = val
 
   map(write, jaxpr.in_binders, args)
@@ -1322,7 +1319,7 @@ from functools import lru_cache
 ```
 
 ```{code-cell} ipython3
-@lru_cache()
+@lru_cache()  # ShapedArrays are hashable
 def make_jaxpr_v1(f, *avals_in):
   avals_in, in_tree = tree_flatten(avals_in)
   f, out_tree = flatten_fun(f, in_tree)
@@ -1437,7 +1434,7 @@ def new_dynamic(main: MainTrace):
 ```
 
 ```{code-cell} ipython3
-@lru_cache()  # ShapedArrays are hashable
+@lru_cache()
 def make_jaxpr(f, *avals_in):
   avals_in, in_tree = tree_flatten(avals_in)
   f, out_tree = flatten_fun(f, in_tree)
@@ -1471,9 +1468,7 @@ system state simpler.
 +++
 
 That's it for jaxprs! With jaxprs in hand, we can implement the remaining
-major JAX features. But before moving on, let's highlight some
-simplifications we've made:
-1. **Single-output primitives and jaxprs.**
+major JAX features.
 
 +++
 
@@ -1881,6 +1876,10 @@ The `linearize` and `vjp` autodiff functions are built on `jvp`, but involve
 jaxprs as well. That's because both involve staging out, or delaying,
 computation.
 
++++
+
+### `linearize`
+
 In the case of `linearize`, we want to stage out the linear part of a `jvp`
 computation. That is, if we have `jvp : (a -> b) -> (a, T a) -> (b, T b)`,
 then we write `linearize : (a -> b) -> a -> (b, T a -o T b)`, where
@@ -1910,11 +1909,9 @@ def split_half(lst):
 def linearize_flat(f, *primals_in):
   pvals_in = ([PartialVal.known(x) for x in primals_in] +
               [PartialVal.unknown(vspace(get_aval(x))) for x in primals_in])
-
   def f_jvp(*primals_tangents_in):
     primals_out, tangents_out = jvp(f, *split_half(primals_tangents_in))
     return [*primals_out, *tangents_out]
-
   jaxpr, pvals_out, consts = partial_eval_flat(f_jvp, pvals_in)
   primal_pvals, _ = split_half(pvals_out)
   assert all(pval.is_known   for pval in primal_pvals)
@@ -1953,8 +1950,8 @@ class PartialVal(NamedTuple):
   def unknown(cls, aval: ShapedArray):
     return PartialVal(aval, None)
 
-  is_known = property(lambda self: self.const is not None)
-  is_unknown = property(lambda self: self.const is None)
+  is_known   = property(lambda self: self.const is not None)
+  is_unknown = property(lambda self: self.const is     None)
 
 def partial_eval_flat(f, pvals_in: List[PartialVal]):
   with new_main(PartialEvalTrace) as main:
@@ -2132,4 +2129,137 @@ def check_toposort(nodes: List[Any], parents: Callable[[Any], List[Any]]):
 y, sin_lin = linearize(sin, 3.)
 print(y, sin(3.))
 print(sin_lin(1.), cos(3.))
+```
+
+### `vjp` and `grad`
+
+The `vjp` transformatino works a lot like linearize. Its type signature is
+very similar as well:
+
+```
+linearize : (a -> b) -> a -> (b, T a -o T b)
+vjp       : (a -> b) -> a -> (b, T b -o T a)
+```
+
+The only difference is that we transpose the linear part of the computation
+before returning it, so that it goes from type `T a -o T b` to type `T b -o T
+a`. Since we have the linear computation as a jaxpr, we can implement the
+transpose transformation as a nonstandard jaxpr interpreter.
+
+```{code-cell} ipython3
+def vjp_flat(f, *primals_in):
+  pvals_in = ([PartialVal.known(x) for x in primals_in] +
+              [PartialVal.unknown(vspace(get_aval(x))) for x in primals_in])
+  primal_pvals_in, tangent_pvals_in = split_half(pvals_in)
+  def f_jvp(*primals_tangents_in):
+    primals_out, tangents_out = jvp(f, *split_half(primals_tangents_in))
+    return [*primals_out, *tangents_out]
+  jaxpr, pvals_out, consts = partial_eval_flat(f_jvp, pvals_in)
+  primal_pvals, _ = split_half(pvals_out)
+  assert all(pval.is_known   for pval in primal_pvals)
+  primals_out = [pval.const for pval in primal_pvals]
+  transpose_inputs = consts + [UndefPrimal(p.aval) for p in tangent_pvals_in]
+  f_vjp = lambda *cts: eval_jaxpr_transposed(jaxpr, transpose_inputs, cts)
+  return primals_out, f_vjp
+```
+
+```{code-cell} ipython3
+def vjp(f, *primals_in):
+  primals_in_flat, in_tree = tree_flatten(primals_in)
+  f, out_tree = flatten_fun(f, in_tree)
+  primals_out_flat, f_vjp_flat = vjp_flat(f, *primals_in_flat)
+  primals_out = tree_unflatten(out_tree(), primals_out_flat)
+
+  def f_vjp(*cotangents_out):
+    cotangents_out_flat, _ = tree_flatten(cotangents_out)
+    cotangents_in_flat = f_vjp_flat(*cotangents_out_flat)
+    return tree_unflatten(in_tree, cotangents_in_flat)
+
+  return primals_out, f_vjp
+```
+
+```{code-cell} ipython3
+class UndefPrimal(NamedTuple):
+  aval: ShapedArray
+```
+
+```{code-cell} ipython3
+# NB: the analogous function in JAX is called 'backward_pass'
+def eval_jaxpr_transposed(jaxpr: Jaxpr, args: List[Any], cotangents: List[Any]
+                          ) -> List[Any]:
+  primal_env: Dict[Var, Any] = {}
+  ct_env: Dict[Var, Any] = {}
+
+  def read_primal(x: Atom) -> Any:
+    return primal_env.get(x, UndefPrimal(x.aval)) if type(x) is Var else x.val
+
+  def write_primal(v: Var, val: Any) -> None:
+    if type(val) is not UndefPrimal:
+      primal_env[v] = val
+
+  def read_cotangent(v: Var) -> Any:
+    return ct_env.pop(v, np.zeros(v.aval.shape, v.aval.dtype))
+
+  def write_cotangent(x: Atom, val: Any):
+    if type(x) is Var and val is not None:
+      ct_env[x] = add(ct_env[x], val) if x in ct_env else val
+
+  map(write_primal, jaxpr.in_binders, args)
+  map(write_cotangent, jaxpr.outs, cotangents)
+  for eqn in jaxpr.eqns[::-1]:
+    primals_in = map(read_primal, eqn.inputs)
+    cts_in = map(read_cotangent, eqn.out_binders)
+    rule = transpose_rules[eqn.primitive]
+    cts_out = rule(cts_in, *primals_in, **eqn.params)
+    map(write_cotangent, eqn.inputs, cts_out)
+
+  return [read_cotangent(v) for v, x in zip(jaxpr.in_binders, args)
+          if type(x) is UndefPrimal]
+```
+
+```{code-cell} ipython3
+transpose_rules = {}
+```
+
+```{code-cell} ipython3
+def mul_transpose_rule(cts, x, y):
+  z_bar, = cts
+  assert (type(x) is UndefPrimal) ^ (type(y) is UndefPrimal)
+  return [mul(z_bar, y), None] if type(x) is UndefPrimal else [None, mul(x, z_bar)]
+transpose_rules[mul_p] = mul_transpose_rule
+
+def neg_transpose_rule(cts, x):
+  ybar, = cts
+  assert type(x) is UndefPrimal
+  return [ybar]
+transpose_rules[neg_p] = neg_transpose_rule
+
+def add_transpose_rule(cts, x, y):
+  z_bar, = cts
+  return [z_bar, z_bar]
+transpose_rules[add_p] = add_transpose_rule
+```
+
+```{code-cell} ipython3
+def grad(f):
+  def gradfun(x, *xs):
+    y, f_vjp = vjp(f, x, *xs)
+    if np.shape(y) != (): raise TypeError
+    x_bar, *_ = f_vjp(np.ones(np.shape(y), np.result_type(y)))
+    return x_bar
+  return gradfun
+```
+
+```{code-cell} ipython3
+y, f_vjp = vjp(sin, 3.)
+print(f_vjp(1.), cos(3.))
+```
+
+```{code-cell} ipython3
+def f(x):
+  y = sin(x) * 2.
+  z = - y + x
+  return z
+
+print(grad(f)(3.))
 ```
