@@ -32,7 +32,7 @@ limitations under the License.
 ---
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 
 ```
 
@@ -76,7 +76,7 @@ We can implement stacks of interpreters and even have them all discharge on
 the fly as we execute the Python function to be transformed. To start, let's
 define these primitives so that we can intercept their application:
 
-```{code-cell} ipython3
+```{code-cell}
 from typing import NamedTuple
 
 class Primitive(NamedTuple):
@@ -130,24 +130,24 @@ to the element's height in the stack), an interpreter type (which we'll call a
 needs. We call each element a `MainTrace`, though maybe "Interpreter" would be
 more descriptive.
 
-```{code-cell} ipython3
+```{code-cell}
 from contextlib import contextmanager
 from typing import Type, List, Optional, Any
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class MainTrace(NamedTuple):
   level: int
   trace_type: Type['Trace']
   global_data: Optional[Any]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 trace_stack: List[MainTrace] = []
 dynamic_trace: Optional[MainTrace] = None  # to be employed in Part 3
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @contextmanager
 def new_main(trace_type: Type['Trace'], global_data=None):
   level = len(trace_stack)
@@ -177,7 +177,7 @@ and `Tracer` base classes. A `Tracer` represents a boxed-up value, perhaps
 carrying some extra context data used by the interpreter. A `Trace` handles
 boxing up vales into `Tracers` and also handles primitive application.
 
-```{code-cell} ipython3
+```{code-cell}
 class Trace:
   main: MainTrace
 
@@ -207,12 +207,12 @@ relationship between `Tracer`s and `AbstractValue`s is that there's one
 `Tracer` per transformation, and at least one `AbstractValue` per base type,
 like arrays.)
 
-```{code-cell} ipython3
+```{code-cell}
 import numpy as np
 from typing import Tuple
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class Tracer:
   _trace: Trace
 
@@ -241,11 +241,11 @@ class Tracer:
       raise AttributeError(f"{self.__class__.__name__} has no attribute {name}")
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def swap(f): return lambda x, y: f(y, x)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class ShapedArray:
   array_abstraction_level = 1
   shape: Tuple[int]
@@ -288,7 +288,7 @@ class ShapedArray:
     return f"ShapedArray(shape={self.shape}, dtype={self.dtype})"
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class ConcreteArray(ShapedArray):
   array_abstraction_level = 2
   val: np.ndarray
@@ -307,7 +307,7 @@ class ConcreteArray(ShapedArray):
     return bool(tracer.aval.val)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def get_aval(x):
   if isinstance(x, Tracer):
     return x.aval
@@ -317,7 +317,7 @@ def get_aval(x):
     raise TypeError(x)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 jax_types = {bool, int, float,
              np.bool_, np.int32, np.int64, np.float32, np.float64, np.ndarray}
 ```
@@ -330,7 +330,7 @@ singleton set consisting of a single array value.
 Now that we've set up the interpreter stack, the Trace/Tracer API for
 interpreters, and abstract values, we can come back to implement `bind`:
 
-```{code-cell} ipython3
+```{code-cell}
 def bind(prim, *args, **params):
   top_trace = find_top_trace(args)
   tracers = [full_raise(top_trace, arg) for arg in args]
@@ -345,11 +345,11 @@ rule. The calls to `full_raise` just ensure that the inputs are boxed in the
 top trace's `Tracer` instances, and the call to `full_lower` is an optional
 optimization so that we unbox values out of `Tracer`s as much as possible.
 
-```{code-cell} ipython3
+```{code-cell}
 import operator as op
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def find_top_trace(xs) -> Trace:
   top_main = max((x._trace.main for x in xs if isinstance(x, Tracer)),
                  default=trace_stack[0], key=op.attrgetter('level'))
@@ -376,7 +376,7 @@ operation. That's worth exploring! JAX is designed around data dependence in
 large part because that's so natural for automatic differentiation, and JAX's
 roots are in autodiff. But it may be over-fit.
 
-```{code-cell} ipython3
+```{code-cell}
 def full_lower(val: Any):
   if isinstance(val, Tracer):
     return val.full_lower()
@@ -384,7 +384,7 @@ def full_lower(val: Any):
     return val
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def full_raise(trace: Trace, val: Any) -> Tracer:
   if not isinstance(val, Tracer):
     assert type(val) in jax_types
@@ -416,7 +416,7 @@ That's it for the JAX core! Now we can start adding interpreters.
 We'll start with the simplest interpreter: the evaluation interpreter that
 will sit at the bottom of the interpreter stack.
 
-```{code-cell} ipython3
+```{code-cell}
 class EvalTrace(Trace):
   pure = lift = lambda self, x: x  # no boxing in Tracers needed
 
@@ -424,15 +424,15 @@ class EvalTrace(Trace):
     return impl_rules[primitive](*tracers, **params)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 trace_stack.append(MainTrace(0, EvalTrace, None))  # special bottom of the stack
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 impl_rules = {}
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 impl_rules[add_p] = lambda x, y: [np.add(x, y)]
 impl_rules[mul_p] = lambda x, y: [np.multiply(x, y)]
 impl_rules[neg_p] = lambda x: [np.negative(x)]
@@ -443,7 +443,7 @@ impl_rules[greater_p] = lambda x, y: [np.greater(x, y)]
 impl_rules[transpose_p] = lambda x, *, perm: [np.transpose(x, perm)]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def broadcast_impl(x, *, shape, axes):
   return [np.broadcast_to(np.expand_dims(x, axes), shape)]
 impl_rules[broadcast_p] = broadcast_impl
@@ -451,14 +451,14 @@ impl_rules[broadcast_p] = broadcast_impl
 
 With this interpreter, we can evaluate user functions:
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   y = sin(x) * 2.
   z = - y + x
   return z
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 print(f(3.0))
 ```
 
@@ -471,12 +471,12 @@ that now we can add some real transformations.
 
 First, a few helper functions:
 
-```{code-cell} ipython3
+```{code-cell}
 def zeros_like(val):
   return np.zeros_like(val)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def unzip2(pairs):
   lst1, lst2 = [], []
   for x1, x2 in pairs:
@@ -485,7 +485,7 @@ def unzip2(pairs):
   return lst1, lst2
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 map_ = map
 def map(f, *xs):
   return list(map_(f, *xs))
@@ -494,7 +494,7 @@ def map(f, *xs):
 The `Tracer` for forward-mode autodiff carries a primal-tangent pair. The
 `Trace` applies JVP rules.
 
-```{code-cell} ipython3
+```{code-cell}
 class JVPTracer(Tracer):
   def __init__(self, trace, primal, tangent):
     self._trace = trace
@@ -506,7 +506,7 @@ class JVPTracer(Tracer):
     return get_aval(self.primal)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class JVPTrace(Trace):
   pure = lift = lambda self, val: JVPTracer(self, val, zeros_like(val))
 
@@ -517,7 +517,7 @@ class JVPTrace(Trace):
     return [JVPTracer(self, x, t) for x, t in zip(primal_outs, tangent_outs)]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 jvp_rules = {}
 ```
 
@@ -526,49 +526,49 @@ minimal amount of context, which is a zero tangent value.
 
 Let's add some JVP rules for primitives:
 
-```{code-cell} ipython3
+```{code-cell}
 def add_jvp(primals, tangents):
   (x, y), (x_dot, y_dot) = primals, tangents
   return [x + y], [x_dot + y_dot]
 jvp_rules[add_p] = add_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def mul_jvp(primals, tangents):
   (x, y), (x_dot, y_dot) = primals, tangents
   return [x * y], [x_dot * y + x * y_dot]
 jvp_rules[mul_p] = mul_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def sin_jvp(primals, tangents):
   (x,), (x_dot,) = primals, tangents
   return [sin(x)], [cos(x) * x_dot]
 jvp_rules[sin_p] = sin_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def cos_jvp(primals, tangents):
   (x,), (x_dot,) = primals, tangents
   return [cos(x)], [-sin(x) * x_dot]
 jvp_rules[cos_p] = cos_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def neg_jvp(primals, tangents):
   (x,), (x_dot,) = primals, tangents
   return [neg(x)], [neg(x_dot)]
 jvp_rules[neg_p] = neg_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def reduce_sum_jvp(primals, tangents, *, axis):
   (x,), (x_dot,) = primals, tangents
   return [reduce_sum(x, axis)], [reduce_sum(x_dot, axis)]
 jvp_rules[reduce_sum_p] = reduce_sum_jvp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def greater_jvp(primals, tangents):
   (x, y), _ = primals, tangents
   out_primal = greater(x, y)
@@ -578,7 +578,7 @@ jvp_rules[greater_p] = greater_jvp
 
 Finally, we add a transformation API to kick off the trace:
 
-```{code-cell} ipython3
+```{code-cell}
 def jvp_v1(f, primals, tangents):
   with new_main(JVPTrace) as main:
     trace = JVPTrace(main)
@@ -591,14 +591,14 @@ def jvp_v1(f, primals, tangents):
 
 And with that, we can differentiate!
 
-```{code-cell} ipython3
+```{code-cell}
 x = 3.0
 y, sin_deriv_at_3 = jvp_v1(sin, (x,), (1.0,))
 print(sin_deriv_at_3)
 print(cos(3.0))
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   y = sin(x) * 2.
   z = - y + x
@@ -610,7 +610,7 @@ print(y)
 print(ydot)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def deriv(f):
   return lambda x: jvp_v1(f, (x,), (1.,))[1]
 
@@ -620,7 +620,7 @@ print(deriv(deriv(deriv(sin)))(3.))
 print(deriv(deriv(deriv(deriv(sin))))(3.))
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   if x > 0.:  # Python control flow
     return 2. * x
@@ -648,7 +648,7 @@ Here's how we'd like to write `jvp`, assuming the user always gives us
 functions that take arrays as inputs and produces a flat list of arrays as
 outputs:
 
-```{code-cell} ipython3
+```{code-cell}
 def jvp_flat(f, primals, tangents):
   with new_main(JVPTrace) as main:
     trace = JVPTrace(main)
@@ -662,7 +662,7 @@ def jvp_flat(f, primals, tangents):
 To support user functions that have arbitrary containers in the inputs and
 outputs, here's how we'd write the user-facing `jvp` wrapper:
 
-```{code-cell} ipython3
+```{code-cell}
 def jvp(f, primals, tangents):
   primals_flat, in_tree = tree_flatten(primals)
   tangents_flat, in_tree2 = tree_flatten(tangents)
@@ -685,7 +685,7 @@ types](https://en.wikipedia.org/wiki/Substructural_type_system).)
 All that remains is to write `tree_flatten`, `tree_unflatten`, and
 `flatten_fun`:
 
-```{code-cell} ipython3
+```{code-cell}
 def flatten_fun(f, in_tree):
   store = Store()
 
@@ -699,12 +699,12 @@ def flatten_fun(f, in_tree):
   return flat_fun, store
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class Empty: pass
 empty = Empty()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class Store:
   val = empty
 
@@ -716,7 +716,7 @@ class Store:
     return self.val
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 import itertools as it
 from typing import Callable, Type, Hashable, Dict, Iterable, Iterator
 
@@ -768,14 +768,14 @@ With this pytree-handling `jvp` impelmentation, we can now handle arbitrary
 input and output containers. That'll come in handy with future transformations
 too!
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   y = sin(x) * 2.
   z = - y + x
   return {'hi': z, 'there': [x, y]}
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 x, xdot = 3., 1.
 y, ydot = jvp(f, (x,), (xdot,))
 print(y)
@@ -788,14 +788,14 @@ First, a couple helper functions, one for producing mapped abstract values
 from unmapped ones (by removing an axis), and one for moving batch dimensions
 around:
 
-```{code-cell} ipython3
+```{code-cell}
 def mapped_aval(batch_dim, aval):
   shape = list(aval.shape)
   del shape[batch_dim]
   return ShapedArray(tuple(shape), aval.dtype)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def move_batch_axis(axis_size, src, dst, x):
   if src is not_mapped:
     target_shape = list(np.shape(x))
@@ -807,7 +807,7 @@ def move_batch_axis(axis_size, src, dst, x):
     return moveaxis(x, src, dst)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def moveaxis(x, src: int, dst: int):
   perm = [i for i in range(np.ndim(x)) if i != src]
   perm.insert(dst, src)
@@ -817,20 +817,20 @@ def moveaxis(x, src: int, dst: int):
 The `Tracer` for vectorized batching carries a batched value and an optional
 integer indicating which axis (if any) is the batch axis.
 
-```{code-cell} ipython3
+```{code-cell}
 from typing import Union
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class NotMapped: pass
 not_mapped = NotMapped()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 BatchAxis = Union[NotMapped, int]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class BatchTracer(Tracer):
   def __init__(self, trace, val, batch_dim: BatchAxis):
     self._trace = trace
@@ -851,7 +851,7 @@ class BatchTracer(Tracer):
       return self
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class BatchTrace(Trace):
   pure = lift = lambda self, val: BatchTracer(self, val, not_mapped)
 
@@ -866,7 +866,7 @@ class BatchTrace(Trace):
     return self.main.global_data
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 vmap_rules = {}
 ```
 
@@ -882,11 +882,11 @@ size.
 
 Next we can define batching interpreter rules for each primitive:
 
-```{code-cell} ipython3
+```{code-cell}
 from functools import partial
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def broadcasting_binop_batching_rule(op, axis_size, vals_in, dims_in):
   (x, y), (x_bdim, y_bdim) = vals_in, dims_in
   if x_bdim != y_bdim:
@@ -899,7 +899,7 @@ vmap_rules[add_p] = partial(broadcasting_binop_batching_rule, add)
 vmap_rules[mul_p] = partial(broadcasting_binop_batching_rule, mul)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def vectorized_unop_batching_rule(op, axis_size, vals_in, dims_in):
   (x,), (x_bdim,) = vals_in, dims_in
   return [op(x)], [x_bdim]
@@ -908,19 +908,22 @@ vmap_rules[cos_p] = partial(vectorized_unop_batching_rule, cos)
 vmap_rules[neg_p] = partial(vectorized_unop_batching_rule, neg)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def reduce_sum_batching_rule(axis_size, vals_in, dims_in, *, axis):
   (x,), (x_bdim,) = vals_in, dims_in
   new_axis = axis + (x_bdim <= axis)
   out_bdim = x_bdim - (new_axis < x_bdim)
   return [reduce_sum(x, new_axis)], [out_bdim]
 vmap_rules[reduce_sum_p] = reduce_sum_batching_rule
-# -
 ```
+
+-
+
++++
 
 Finally, we add a transformation API to kick off the trace:
 
-```{code-cell} ipython3
+```{code-cell}
 def vmap_flat(f, in_axes, *args):
   axis_size, = {x.shape[ax] for x, ax in zip(args, in_axes)
                 if ax is not not_mapped}
@@ -936,7 +939,7 @@ def vmap_flat(f, in_axes, *args):
   return outs_transposed
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def vmap(f, in_axes):
   def batched_f(*args):
     args_flat, in_tree = tree_flatten(args)
@@ -948,7 +951,7 @@ def vmap(f, in_axes):
   return batched_f
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def add_one_to_a_scalar(scalar):
   assert np.ndim(scalar) == 0
   return 1 + scalar
@@ -960,7 +963,7 @@ print(vector_in)
 print(vector_out)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def jacfwd(f, x):
   pushfwd = lambda v: jvp(f, (x,), (v,))[1]
   vecs_in = np.eye(np.size(x)).reshape(np.shape(x) * 2)
@@ -1045,7 +1048,7 @@ How do we represent these as Python data structures? We reuse ShapedArrays to
 represent types, and we can represent the term syntax with a few Python
 structs:
 
-```{code-cell} ipython3
+```{code-cell}
 from typing import Set
 
 class Var:
@@ -1084,7 +1087,7 @@ Type-checking a jaxpr involves checking that there are no unbound variables,
 that variables are only bound once, and that for each equation the type of
 the primitive application matches the type of the output binders.
 
-```{code-cell} ipython3
+```{code-cell}
 class JaxprType:
   in_types: List[ShapedArray]
   out_type: List[ShapedArray]
@@ -1134,7 +1137,7 @@ def types_equal(a: ShapedArray, b: ShapedArray) -> bool:
 We can apply the function represented by a jaxpr to arguments with a simple
 interpreter.
 
-```{code-cell} ipython3
+```{code-cell}
 def eval_jaxpr(jaxpr: Jaxpr, args: List[Any]) -> List[Any]:
   env: Dict[Var, Any] = {}
 
@@ -1153,7 +1156,7 @@ def eval_jaxpr(jaxpr: Jaxpr, args: List[Any]) -> List[Any]:
   return map(read, jaxpr.outs)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def jaxpr_as_fun(jaxpr: Jaxpr):
   return lambda *args: eval_jaxpr(jaxpr, args)
 ```
@@ -1170,7 +1173,7 @@ a jaxpr; `jit` uses one and `vjp` uses the other. We'll start with the one
 used by `jit`, which is also used by control flow primitives like `lax.cond`,
 `lax.while_loop`, and `lax.scan`.
 
-```{code-cell} ipython3
+```{code-cell}
 # NB: the analogous class in JAX is called 'DynamicJaxprTracer'
 class JaxprTracer(Tracer):
   __slots__ = ['aval']
@@ -1216,7 +1219,7 @@ abstract_eval_rules = {}
 Notice that we keep as interpreter-global data a builder object, which keeps
 track of variables, constants, and eqns as we build up the jaxpr.
 
-```{code-cell} ipython3
+```{code-cell}
 class JaxprBuilder:
   eqns: List[JaxprEqn]
   tracer_to_var: Dict[int, Var]
@@ -1277,7 +1280,7 @@ produce ConcreteArray outputs as well). We'll reuse these abstract evaluation
 rules for the other jaxpr-producing trace machinery, where the potential extra
 generality is useful.
 
-```{code-cell} ipython3
+```{code-cell}
 def broadcast_shapes(*shapes):
   assert len(shapes) > 1
   for sizes in zip(*shapes):
@@ -1314,11 +1317,11 @@ abstract_eval_rules[broadcast_p] = broadcast_abstract_eval
 To check our implementation of jaxprs, we can add a `make_jaxpr`
 transformation and a pretty-printer:
 
-```{code-cell} ipython3
+```{code-cell}
 from functools import lru_cache
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @lru_cache()  # ShapedArrays are hashable
 def make_jaxpr_v1(f, *avals_in):
   avals_in, in_tree = tree_flatten(avals_in)
@@ -1334,7 +1337,7 @@ def make_jaxpr_v1(f, *avals_in):
   return jaxpr, consts, out_tree()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 :tags: [hide-input]
 
 from collections import defaultdict
@@ -1400,7 +1403,7 @@ def pp_params(params: Dict[str, Any]) -> PPrint:
     return pp(' ')
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 jaxpr, consts, _ = make_jaxpr_v1(lambda x: 2. * x, raise_to_shaped(get_aval(3.)))
 print(pp_jaxpr(jaxpr))
 print(typecheck_jaxpr(jaxpr))
@@ -1410,7 +1413,7 @@ But there's a limitation here: because of how `find_top_trace` operates by
 data dependence, `make_jaxpr_v1` can't stage out all the primitive operations
 performed by the Python callable it's given. For example:
 
-```{code-cell} ipython3
+```{code-cell}
 jaxpr, consts, _ = make_jaxpr_v1(lambda: mul(2., 2.))
 print(pp_jaxpr(jaxpr))
 ```
@@ -1422,7 +1425,7 @@ applied, regardless of whether any inputs to `bind` are boxed in corresponding
 `JaxprTracer` instances. We can achieve this by employing the `dynamic_trace`
 global defined in Part 1:
 
-```{code-cell} ipython3
+```{code-cell}
 @contextmanager
 def new_dynamic(main: MainTrace):
   global dynamic_trace
@@ -1433,7 +1436,7 @@ def new_dynamic(main: MainTrace):
     dynamic_trace = prev_dynamic_trace
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @lru_cache()
 def make_jaxpr(f, *avals_in):
   avals_in, in_tree = tree_flatten(avals_in)
@@ -1450,7 +1453,7 @@ def make_jaxpr(f, *avals_in):
   return jaxpr, consts, out_tree()
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 jaxpr, consts, _ = make_jaxpr(lambda: mul(2., 2.))
 print(pp_jaxpr(jaxpr))
 ```
@@ -1532,7 +1535,7 @@ But it's just imprecise yet sticky jargon.
 
 With the initial-style approach, here's the user-facing `jit` wrapper:
 
-```{code-cell} ipython3
+```{code-cell}
 def jit(f):
   def f_jitted(*args):
     avals_in = [raise_to_shaped(get_aval(x)) for x in args]
@@ -1555,7 +1558,7 @@ signature.
 
 First, some utilities.
 
-```{code-cell} ipython3
+```{code-cell}
 class IDHashable:
   val: Any
 
@@ -1571,7 +1574,7 @@ class IDHashable:
 
 Next, we'll define the evaluation rule for `xla_call`:
 
-```{code-cell} ipython3
+```{code-cell}
 from jax.lib import xla_bridge as xb
 from jax.lib import xla_client as xc
 xe = xc._xla
@@ -1614,7 +1617,7 @@ The main action is in `xla_callable`, which compiles a jaxpr into an XLA HLO
 program using `jaxpr_subcomp`, then returns a callable which executes the
 compiled program:
 
-```{code-cell} ipython3
+```{code-cell}
 def jaxpr_subcomp(c: xe.XlaBuilder, jaxpr: Jaxpr, args: List[xe.XlaOp]
                   ) -> xe.XlaOp:
   env: Dict[Var, xe.XlaOp] = {}
@@ -1657,13 +1660,13 @@ a common pattern: the way we process jaxprs is usually with an interpreter.
 And as with any interpreter, we need an interpretation rule for each
 primitive:
 
-```{code-cell} ipython3
+```{code-cell}
 def direct_translation(op, c, in_avals, in_vals):
   del c, in_avals
   return [op(*in_vals)]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 xla_translations[add_p] = partial(direct_translation, xops.Add)
 xla_translations[mul_p] = partial(direct_translation, xops.Mul)
 xla_translations[neg_p] = partial(direct_translation, xops.Neg)
@@ -1672,7 +1675,7 @@ xla_translations[cos_p] = partial(direct_translation, xops.Cos)
 xla_translations[greater_p] = partial(direct_translation, xops.Gt)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def reduce_sum_translation(c, in_avals, in_vals, *, axis):
   (x_aval,), (x,) = in_avals, in_vals
   zero = xops.ConstantLiteral(c, np.array(0, x_aval.dtype))
@@ -1683,7 +1686,7 @@ def reduce_sum_translation(c, in_avals, in_vals, *, axis):
 xla_translations[reduce_sum_p] = reduce_sum_translation
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def broadcast_translation(c, in_avals, in_vals, *, shape, axes):
   x, = in_vals
   dims_complement = [i for i in range(len(shape)) if i not in axes]
@@ -1694,24 +1697,24 @@ xla_translations[broadcast_p] = broadcast_translation
 With that, we can now use `jit` to stage out, compile, and execute programs
 with XLA!
 
-```{code-cell} ipython3
+```{code-cell}
 @jit
 def f(x, y):
   print('tracing!')
   return sin(x) * cos(y)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 z = f(3., 4.)  # 'tracing!' prints the first time
 print(z)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 z = f(4., 5.)  # 'tracing!' doesn't print, compilation cache hit!
 print(z)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @jit
 def f(x):
   return reduce_sum(x, axis=0)
@@ -1719,7 +1722,7 @@ def f(x):
 print(f(np.array([1., 2., 3.])))
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   y = sin(x) * 2.
   z = - y + x
@@ -1747,7 +1750,7 @@ its evaluation rule. That is, we can't yet do `vmap`-of-`jit` or
 `jvp`-of-`jit` or even `jit`-of`-jit`. Instead `jit` has to be at the "top
 level." Let's fix that!
 
-```{code-cell} ipython3
+```{code-cell}
 def xla_call_jvp_rule(primals, tangents, *, jaxpr, num_consts):
   del num_consts  # Unused.
   new_jaxpr, new_consts = jvp_jaxpr(jaxpr)
@@ -1759,7 +1762,7 @@ def xla_call_jvp_rule(primals, tangents, *, jaxpr, num_consts):
 jvp_rules[xla_call_p] = xla_call_jvp_rule
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @lru_cache()
 def jvp_jaxpr(jaxpr: Jaxpr) -> Tuple[Jaxpr, List[Any]]:
   def jvp_traceable(*primals_and_tangents):
@@ -1772,7 +1775,7 @@ def jvp_jaxpr(jaxpr: Jaxpr) -> Tuple[Jaxpr, List[Any]]:
   return new_jaxpr, new_consts
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def xla_call_vmap_rule(axis_size, vals_in, dims_in, *, jaxpr, num_consts):
   del num_consts  # Unused.
   new_jaxpr, new_consts = vmap_jaxpr(jaxpr, axis_size, tuple(dims_in))
@@ -1800,7 +1803,7 @@ def unmapped_aval(axis_size: int, batch_dim: BatchAxis, aval: ShapedArray
     return ShapedArray(tuple(shape), aval.dtype)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @jit
 def f(x):
   print('tracing!')
@@ -1826,7 +1829,7 @@ transfer them back for the next operation. We can do that by introducing a
 `DeviceArray` class, which can wrap XLA buffers and otherwise duck-type
 `numpy.ndarray`s:
 
-```{code-cell} ipython3
+```{code-cell}
 def handle_result(aval: ShapedArray, buf):  # noqa: F811
   return DeviceArray(aval, buf)
 
@@ -1857,7 +1860,7 @@ input_handlers[DeviceArray] = lambda x: x.buf
 jax_types.add(DeviceArray)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 @jit
 def f(x):
   y = sin(x) * 2.
@@ -1898,14 +1901,14 @@ To build the `f_lin` jaxpr from a JVP, we need to perform partial evaluation:
 we evaluate all the primal values as we trace, but stage the tangent
 computations into a jaxpr.
 
-```{code-cell} ipython3
+```{code-cell}
 def split_half(lst):
   n, ragged = divmod(len(lst), 2)
   assert not ragged
   return lst[:n], lst[n:]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def linearize_flat(f, *primals_in):
   pvals_in = ([PartialVal.known(x) for x in primals_in] +
               [PartialVal.unknown(vspace(get_aval(x))) for x in primals_in])
@@ -1937,7 +1940,7 @@ def vspace(aval: ShapedArray) -> ShapedArray:
   return raise_to_shaped(aval)
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class PartialVal(NamedTuple):
   aval: ShapedArray
   const: Optional[Any]
@@ -1964,7 +1967,7 @@ def partial_eval_flat(f, pvals_in: List[PartialVal]):
   return jaxpr, pvals_out, consts
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 from weakref import ref, ReferenceType
 
 class LambdaBindingRecipe(NamedTuple): pass
@@ -2035,7 +2038,7 @@ class PartialEvalTrace(Trace):
     return tracers_out
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def tracers_to_jaxpr(tracers_in: List[PartialEvalTracer],
                      tracers_out: List[PartialEvalTracer]):
   tracers_in  = [t for t in tracers_in  if t.pval.is_unknown]
@@ -2082,7 +2085,7 @@ def tracer_parents(t: PartialEvalTracer) -> List[PartialEvalTracer]:
   return t.recipe.tracers_in if isinstance(t.recipe, JaxprEqnRecipe) else []
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def toposort(out_nodes: List[Any], parents: Callable[[Any], List[Any]]):
   if not out_nodes: return []
   out_nodes = remove_duplicates(out_nodes)
@@ -2125,28 +2128,27 @@ def check_toposort(nodes: List[Any], parents: Callable[[Any], List[Any]]):
     seen.add(id(node))
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 y, sin_lin = linearize(sin, 3.)
 print(y, sin(3.))
 print(sin_lin(1.), cos(3.))
+# ### `vjp` and `grad`
+#
+# The `vjp` transformatino works a lot like linearize. Its type signature is
+# very similar as well:
+#
+# ```
+# linearize : (a -> b) -> a -> (b, T a -o T b)
+# vjp       : (a -> b) -> a -> (b, T b -o T a)
+# ```
+#
+# The only difference is that we transpose the linear part of the computation
+# before returning it, so that it goes from type `T a -o T b` to type `T b -o T
+# a`. Since we have the linear computation as a jaxpr, we can implement the
+# transpose transformation as a nonstandard jaxpr interpreter.
 ```
 
-### `vjp` and `grad`
-
-The `vjp` transformatino works a lot like linearize. Its type signature is
-very similar as well:
-
-```
-linearize : (a -> b) -> a -> (b, T a -o T b)
-vjp       : (a -> b) -> a -> (b, T b -o T a)
-```
-
-The only difference is that we transpose the linear part of the computation
-before returning it, so that it goes from type `T a -o T b` to type `T b -o T
-a`. Since we have the linear computation as a jaxpr, we can implement the
-transpose transformation as a nonstandard jaxpr interpreter.
-
-```{code-cell} ipython3
+```{code-cell}
 def vjp_flat(f, *primals_in):
   pvals_in = ([PartialVal.known(x) for x in primals_in] +
               [PartialVal.unknown(vspace(get_aval(x))) for x in primals_in])
@@ -2163,7 +2165,7 @@ def vjp_flat(f, *primals_in):
   return primals_out, f_vjp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def vjp(f, *primals_in):
   primals_in_flat, in_tree = tree_flatten(primals_in)
   f, out_tree = flatten_fun(f, in_tree)
@@ -2178,12 +2180,12 @@ def vjp(f, *primals_in):
   return primals_out, f_vjp
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 class UndefPrimal(NamedTuple):
   aval: ShapedArray
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 # NB: the analogous function in JAX is called 'backward_pass'
 def eval_jaxpr_transposed(jaxpr: Jaxpr, args: List[Any], cotangents: List[Any]
                           ) -> List[Any]:
@@ -2217,11 +2219,11 @@ def eval_jaxpr_transposed(jaxpr: Jaxpr, args: List[Any], cotangents: List[Any]
           if type(x) is UndefPrimal]
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 transpose_rules = {}
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def mul_transpose_rule(cts, x, y):
   z_bar, = cts
   assert (type(x) is UndefPrimal) ^ (type(y) is UndefPrimal)
@@ -2240,7 +2242,7 @@ def add_transpose_rule(cts, x, y):
 transpose_rules[add_p] = add_transpose_rule
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def grad(f):
   def gradfun(x, *xs):
     y, f_vjp = vjp(f, x, *xs)
@@ -2250,12 +2252,12 @@ def grad(f):
   return gradfun
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 y, f_vjp = vjp(sin, 3.)
 print(f_vjp(1.), cos(3.))
 ```
 
-```{code-cell} ipython3
+```{code-cell}
 def f(x):
   y = sin(x) * 2.
   z = - y + x

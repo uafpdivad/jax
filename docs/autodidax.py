@@ -1,4 +1,4 @@
-# <!--
+# ---
 # Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +24,7 @@
 #   kernelspec:
 #     display_name: Python 3
 #     name: python3
-# -->
+# ---
 
 
 # # Autodidax: JAX core from scratch
@@ -655,8 +655,9 @@ def _tree_unflatten(treedef: PyTreeDef, xs: Iterator) -> Any:
   else:
     children = (_tree_unflatten(t, xs) for t in treedef.child_treedefs)
     return treedef.node_type.from_iterable(treedef.node_metadata, children)
-# -
 
+
+# -
 
 # With this pytree-handling `jvp` impelmentation, we can now handle arbitrary
 # input and output containers. That'll come in handy with future transformations
@@ -781,6 +782,8 @@ def reduce_sum_batching_rule(axis_size, vals_in, dims_in, *, axis):
   out_bdim = x_bdim - (new_axis < x_bdim)
   return [reduce_sum(x, new_axis)], [out_bdim]
 vmap_rules[reduce_sum_p] = reduce_sum_batching_rule
+
+
 # -
 
 # Finally, we add a transformation API to kick off the trace:
@@ -1622,8 +1625,9 @@ y, ydot = jvp(f, (x,), (xdot,))  # 'tracing!' not printed
 
 ys = vmap(f, (0,))(np.arange(3.))
 print(ys)
-# -
 
+
+# -
 
 # One piece missing is device memory persistence for arrays. That is, we've
 # defined `handle_result` to transfer results back to CPU memory as NumPy
@@ -1673,8 +1677,9 @@ x, xdot = 3., 1.
 y, ydot = jvp(f, (x,), (xdot,))
 print(y)
 print(ydot)
-# -
 
+
+# -
 
 # ## Part 4: `linearize` and `vjp` (and `grad`!)
 #
@@ -1702,7 +1707,6 @@ print(ydot)
 # we evaluate all the primal values as we trace, but stage the tangent
 # computations into a jaxpr.
 
-# +
 def split_half(lst):
   n, ragged = divmod(len(lst), 2)
   assert not ragged
@@ -1923,12 +1927,12 @@ def check_toposort(nodes: List[Any], parents: Callable[[Any], List[Any]]):
     assert all(id(parent) in seen for parent in parents(node))
     seen.add(id(node))
 
-# +
+
+# -
+
 y, sin_lin = linearize(sin, 3.)
 print(y, sin(3.))
 print(sin_lin(1.), cos(3.))
-# -
-
 # ### `vjp` and `grad`
 #
 # The `vjp` transformatino works a lot like linearize. Its type signature is
@@ -1958,6 +1962,7 @@ def vjp_flat(f, *primals_in):
   transpose_inputs = consts + [UndefPrimal(p.aval) for p in tangent_pvals_in]
   f_vjp = lambda *cts: eval_jaxpr_transposed(jaxpr, transpose_inputs, cts)
   return primals_out, f_vjp
+
 
 def vjp(f, *primals_in):
   primals_in_flat, in_tree = tree_flatten(primals_in)
@@ -2029,7 +2034,8 @@ def add_transpose_rule(cts, x, y):
 transpose_rules[add_p] = add_transpose_rule
 
 
-# +
+# -
+
 def grad(f):
   def gradfun(x, *xs):
     y, f_vjp = vjp(f, x, *xs)
@@ -2039,7 +2045,6 @@ def grad(f):
   return gradfun
 
 
-# +
 y, f_vjp = vjp(sin, 3.)
 print(f_vjp(1.), cos(3.))
 
