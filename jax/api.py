@@ -239,11 +239,6 @@ def _python_jit(
   return f_jitted
 
 
-class _BackendAndDeviceInfo(NamedTuple):
-  default_device: xc.Device
-  committed_to_device: bool
-
-
 def _cpp_jit(
     fun: F,
     static_argnums: Union[int, Iterable[int]] = (),
@@ -343,7 +338,7 @@ def _cpp_jit(
       backend_ = xb.get_backend(backend)
       default_device = backend_.get_default_device_assignment(1)[0]
 
-    return _BackendAndDeviceInfo(default_device, committed_to_device)
+    return xla.BackendAndDeviceInfo(default_device, committed_to_device)
 
   static_argnums_ = (0,) + tuple(i + 1 for i in static_argnums)
   cpp_jitted_f = jax_jit.jit(fun, cache_miss, get_device_info,
