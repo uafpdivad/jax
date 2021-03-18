@@ -51,6 +51,7 @@ class Config:
     self.meta = {}
     self.FLAGS = NameSpace(self.read)
     self.use_absl = False
+    self._contextmanager_flags = set()
 
     # TODO(mattjj): delete these when only omnistaging is available
     self.omnistaging_enabled = bool_env('JAX_OMNISTAGING', True)
@@ -71,6 +72,13 @@ class Config:
       lib.jax_jit.global_state().enable_x64 = val
 
   def read(self, name):
+    if name in self._contextmanager_flags:
+      raise AttributeError(
+          "For flags with a corresponding contextmanager, read their value "
+          f"via e.g. `config.{name}` rather than `config.FLAGS.{name}`.")
+    return self._read(name)
+
+  def _read(self, name):
     if self.use_absl:
       return getattr(self.absl_flags.FLAGS, name)
     else:
@@ -193,23 +201,17 @@ class Config:
       with enable_foo(True):
         ...
 
-    Accessing ``config.FLAGS.jax_enable_foo`` is different from accessing the
-    thread-local state value via ``config.jax_enable_foo``: the former reads the
-    flag value determined set by the environment variable or command-line flag
-    and does not read the thread-local state, whereas the latter reads the
-    thread-local state value managed by the contextmanager. Think of the
-    contextmanager state as a layer on top of the flag value: if no
-    contextmanager is in use then ``config.jax_enable_foo`` reflects the flag
-    value ``config.FLAGS.jax_enable_foo``, whereas if a contextmanager is in use
-    then only ``config.jax_enable_foo`` is updated. So in general using
-    ``config.jax_enable_foo`` is best.
+    The value of the thread-local state or flag can be accessed via
+    ``config.jax_enable_foo``. Reading it via ``config.FLAGS.jax_enable_foo`` is
+    an error.
     """
     name = name.lower()
     self.DEFINE_bool(name, bool_env(name.upper(), default), help)
+    self._contextmanager_flags.add(name)
 
     def get_state(self):
       val = getattr(_thread_local_state, name, unset)
-      return val if val is not unset else self.read(name)
+      return val if val is not unset else self._read(name)
     setattr(Config, name, property(get_state))
 
     @contextlib.contextmanager

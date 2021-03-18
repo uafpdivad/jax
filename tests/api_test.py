@@ -2334,7 +2334,7 @@ class APITest(jtu.JaxTestCase):
     if not config.omnistaging_enabled:
       raise unittest.SkipTest("test only works with omnistaging")
 
-    with core.checking_leaks():
+    with jax.checking_leaks():
       @jit
       def f(x):
         lst = []
