@@ -356,7 +356,9 @@ def _cpp_jit(
     # TODO(jblespiau): We can remove `config.x64_enabled` when jaxlib 0.1.62 is
     # the minimal version. NOTE(mattjj): minversion 0.1.62 didn't work...
     context = (getattr(core.thread_local_state.trace_state.trace_stack,
-                       "dynamic", None), config.x64_enabled)
+                       "dynamic", None),
+               config.x64_enabled,
+               config.jax_default_dot_precision)
     # TODO(jblespiau): Move this to C++.
     if (config.jax_debug_nans or config.jax_debug_infs) and not _jit_is_disabled():
       device_arrays = cpp_jitted_f(context, *args, **kwargs)
@@ -2442,6 +2444,21 @@ def named_call(
 
   return named_f
 
+
+def invertible(fun: Callable) -> Callable:
+  """Asserts that the decorated function is invertible.
+
+  Applying reverse-mode AD to a decorated function will use a more memory efficient
+  procedure than usual, which will reconstruct the necessary intermediate values
+  by inverting the function. Note that this might degrade the numerical accuracy of
+  obtained gradients if the inverse is unstable.
+
+  Args:
+    fun: The function assumed to be invertible.
+  """
+  return iad.invertible(fun)
+
+
 # TODO(mattjj): delete everything below here (deprecated custom_transforms)
 
 class CustomTransformsFunction(object):
@@ -2583,16 +2600,3 @@ def defvjp(fun, *vjprules):
                    for x, vjp in zip(primals, vjprules))
     return ans, vjpfun
   defvjp_all(fun, custom_vjp)
-
-def invertible(fun: Callable) -> Callable:
-  """Asserts that the decorated function is invertible.
-
-  Applying reverse-mode AD to a decorated function will use a more memory efficient
-  procedure than usual, which will reconstruct the necessary intermediate values
-  by inverting the function. Note that this might degrade the numerical accuracy of
-  obtained gradients if the inverse is unstable.
-
-  Args:
-    fun: The function assumed to be invertible.
-  """
-  return iad.invertible(fun)

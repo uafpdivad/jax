@@ -496,7 +496,13 @@ def concatenate(operands: Sequence[Array], dimension: int) -> Array:
 Precision = xla_client.PrecisionConfig.Precision
 Precision.__str__ = lambda precision: precision.name
 PrecisionType = Any
-PrecisionLike = Union[None, PrecisionType, Tuple[PrecisionType, PrecisionType]]
+PrecisionLike = Union[None, str, PrecisionType,
+                      Tuple[PrecisionType, PrecisionType]]
+_precision_strings = {
+    'bfloat16':      Precision.DEFAULT,
+    'tensorfloat32': Precision.HIGH,
+    'float32':       Precision.HIGHEST,
+}
 
 
 class ConvDimensionNumbers(NamedTuple):
@@ -551,9 +557,10 @@ def conv_general_dilated(
     feature_group_count: integer, default 1. See XLA HLO docs.
     batch_group_count: integer, default 1. See XLA HLO docs.
     precision: Optional. Either ``None``, which means the default precision for
-      the backend, a ``lax.Precision`` enum value (``Precision.DEFAULT``,
-      ``Precision.HIGH`` or ``Precision.HIGHEST``) or a tuple of two
-      ``lax.Precision`` enums indicating precision of ``lhs``` and ``rhs``.
+      the backend, a string ('bfloat16', 'tensorfloat32', or 'float32'), a
+      ``lax.Precision`` enum value (``Precision.DEFAULT``, ``Precision.HIGH`` or
+      ``Precision.HIGHEST``) or a tuple of two ``lax.Precision`` enums
+      indicating precision of ``lhs``` and ``rhs``.
 
   Returns:
     An array containing the convolution result.
@@ -6378,16 +6385,19 @@ def remaining(original, *removed_lists):
 
 def _canonicalize_precision(precision):
   if precision is None:
-    return None
-  if isinstance(precision, Precision) or (
-      isinstance(precision, tuple)
-      and len(precision) == 2
-      and all(isinstance(p, Precision) for p in precision)
-  ):
+    return _precision_strings.get(config.jax_default_dot_precision)
+  elif isinstance(precision, str) and precision in _precision_strings:
+    return _precision_strings.get(precision)
+  elif isinstance(precision, Precision):
+    return precision
+  elif (isinstance(precision, (list, tuple)) and len(precision) == 2 and
+        all(isinstance(p, Precision) for p in precision)):
     return precision
   else:
-    raise ValueError("Precision argument must be None, a lax.Precision value "
-                     f"or a tuple of two lax.Precision values; got {precision}")
+    raise ValueError(
+        f"Precision argument must be None, a string in {_precision_strings}, "
+        "a lax.Precision value or a tuple of two lax.Precision values; "
+        f"got {precision}.")
 
 
 def conv_dimension_numbers(lhs_shape, rhs_shape, dimension_numbers

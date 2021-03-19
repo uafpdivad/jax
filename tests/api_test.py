@@ -2393,6 +2393,58 @@ class APITest(jtu.JaxTestCase):
     expected = jnp.arange(1) + 1
     self.assertAllClose(ans, expected)
 
+  def test_dot_precision_context_manager(self):
+    x = jnp.zeros((2, 2))
+
+    with jax.default_dot_precision(None):
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    self.assertIn('precision=None', str(jaxpr))
+
+    with jax.default_dot_precision("bfloat16"):
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    self.assertIn('precision=DEFAULT', str(jaxpr))
+
+    with jax.default_dot_precision("tensorfloat32"):
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    self.assertIn('precision=HIGH', str(jaxpr))
+
+    with jax.default_dot_precision("float32"):
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    self.assertIn('precision=HIGHEST', str(jaxpr))
+
+    dot = partial(jnp.dot, precision=lax.Precision.HIGHEST)
+    with jax.default_dot_precision("tensorfloat32"):
+      dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(dot)(x, x)
+    self.assertIn('precision=HIGHEST', str(jaxpr))
+
+  def test_dot_precision_flag(self):
+    x = jnp.zeros((2, 2))
+
+    prev_val = config._read("jax_default_dot_precision")
+    try:
+      config.FLAGS.jax_default_dot_precision = "tensorfloat32"
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    finally:
+      config.FLAGS.jax_default_dot_precision = prev_val
+    self.assertIn('precision=HIGH', str(jaxpr))
+    self.assertEqual(prev_val, config._read("jax_default_dot_precision"))
+
+    prev_val = config._read("jax_default_dot_precision")
+    try:
+      config.update('jax_default_dot_precision','tensorfloat32')
+      jnp.dot(x, x)  # doesn't crash
+      jaxpr = jax.make_jaxpr(jnp.dot)(x, x)
+    finally:
+      config.update('jax_default_dot_precision', prev_val)
+    self.assertIn('precision=HIGH', str(jaxpr))
+    self.assertEqual(prev_val, config._read("jax_default_dot_precision"))
+
 
 class RematTest(jtu.JaxTestCase):
 
