@@ -46,6 +46,8 @@ def int_env(varname: str, default: int) -> int:
 
 
 class Config:
+  _HAS_DYNAMIC_ATTRIBUTES = True
+
   def __init__(self):
     self.values = {}
     self.meta = {}
